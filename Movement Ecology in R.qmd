@@ -1,0 +1,634 @@
+---
+title: "An Introduction to Movement Ecology in R"
+author: "Jed Long"
+institute: Western University
+format: 
+  revealjs:
+    logo: figs/logo.png
+    footer: "OCTWS 2023"
+    slide-number: true
+editor: source
+---
+
+
+
+## Welcome
+
+
+## About
+
+## Objectives
+
+:::: {.columns}
+
+::: {.column width="70%"}
+
+1. Learn basics of wildlife tracking data
+2. Discover R packages for working with tracking data
+3. Learn how to make maps and animations of tracking data
+4. Perform basic analytical procedures:
+
+    a. movement metrics
+    b. space use analysis
+  
+5. get exposed to more advanced techniques
+
+:::
+
+::: {.column width="30%"}
+
+![](figs/webb_deer_collar.jpg)
+
+:::
+
+::::
+
+
+
+# The Basics of Wildlife Tracking Data
+
+## What are wildife tracking data?
+
+:::: {.columns}
+
+::: {.column width="50%"}
+
+![](figs/GPS_Data_Table.jpg)
+:::
+
+::: {.column width="50%"}
+
+![](figs/deer_movement.png)
+
+:::
+
+::::
+
+## Wildilfe Tracking Data
+
+Download file from <https://github.com/jedalong/Movement-Ecology-in-R/DeerGPS_MoveEcolWorkshop.csv>
+
+```{r}
+#| echo: true
+x <- read.csv('Data/DeerGPS_MoveEcolWorkshop.csv')
+head(x)
+```
+
+## Dates & Times
+
+
+- Date/Time in separate fields
+- Date/Time in single field
+- function *strptime* for formatting
+
+
+```{r}
+#| echo: true
+
+x$date <- paste(x$MONTH,"/",x$DAY,"/",x$YEAR," ",
+                x$HOUR,":",x$MINUTE,":",x$SECOND,sep="")
+
+x$date1 <- strptime(x$date, "%m/%d/%Y %H:%M:%S")
+
+```
+
+## Dates & Times
+
+- POSIX objects
+    - widely used in tracking packages
+    - easy extraction of date/time features (like tod)
+- Easier formatting using 'lubridate' (we won't use here)
+
+```{r}
+#| echo: true
+x$POSIX <- as.POSIXct(x$date1)
+summary(x[,c('date1','POSIX')])
+```
+
+## Spatial Data
+
+- Vector data using *sf* package
+- Older spatial *sp* package
+    - most tracking packages still use *sp* objects
+
+
+```{r}
+#| echo: true
+library(sf)
+deersf <- st_as_sf(x, coords=c('LONGITUDE','LATITUDE'))
+deersf
+```
+
+## Coordinate Systems
+
+- Coordinate systems by CRS code
+    - find codes: <https:/spatialreference.org>
+- Geodesic vs Projected
+    - Projection Units (think about this)
+    
+```{r}
+#| echo: true
+deersf <- st_as_sf(x, coords=c('LONGITUDE','LATITUDE'), crs=4326)
+deersf
+```
+
+
+## Changing Coordinate Systems
+
+- Easiest done as *sf* object
+- NAD83 UTM Zone 14N is code 3158
+
+```{r}
+#| echo: true
+
+# Convert to NAD83 UTM Zone 14N
+deersf_utm <- st_transform(deersf,crs=3158)
+head(deersf_utm)
+
+```
+
+## GEOMETRY column
+
+- *sf* uses geometry columns
+- add back the coordinates as separate columns
+
+```{r}
+#| echo: true
+#| 
+deersf_utm$X <- st_coordinates(deersf_utm)[,1]  
+deersf_utm$Y <- st_coordinates(deersf_utm)[,2]
+deer_utm <- st_drop_geometry(deersf_utm)
+head(deer_utm)
+```
+
+
+# Why R for Movement Ecology?
+
+![](figs/MovementEcologyInR_Logo.png)
+
+## Movement Ecology in R
+
+- "Recent" paper outlined R ecosystem for movement ecology (Joo et al. 2020, *J. An. Ecol.*)
+
+![Joo et al. 2020, Figure 4](figs/Joo_2020_Packages.jpg)
+
+
+## Movement Ecology in R
+
+- Many packages - That do different things!
+- see also: 
+    - <https://cran.r-project.org/web/views/SpatioTemporal.html>
+    - <https://cran.r-project.org/web/views/Tracking.html>
+
+
+## R Workflows
+
+- We are going to focus on key steps in the typical workflow:
+
+![Joo et al. 2020, Figure 2](figs/Joo_2020_Workflow.jpg)
+
+## Handling Tracking Data
+
+- Two primary packages (IMO): *move* and *adehabitatLT*
+    - see also: *trajr*, *amt*, *trajectories*
+- Both have advantages and disadvantages
+- I primarily use *adehabitatLT* so we will focus on that here
+    - will touch on *move* objects as well
+
+```{r}
+#| echo: true
+
+library(adehabitatLT)
+library(move)
+```
+
+## R Packages Conundrum
+
+- It's getting a bit confusing and messy
+- More packages are probably not the solution
+
+![](figs/standards.png)
+
+## AdehabitatLT Package
+
+- Core structure: *ltraj* trajectory objects
+    - Originated in 2006!
+- Easily incorporates multiple individuals
+   - can incorporate "bursts" within individuals
+- Automatically computes movement metrics (discussed later)
+- Used as input into various analysis
+- Can handle "No Time" tracks (e.g., footprints)
+
+## AdehabitatLT Package
+
+```{r}
+#| echo: true
+deer_ltraj <- as.ltraj(xy=deer_utm[,c('X','Y')],        #Spatial Coordinates
+                       date = deer_utm$POSIX,           #Date/times
+                       id = deer_utm$ID,                #individual IDs
+                       infolocs=deer_utm[,c('PDOP','ACTIVITY')], #other data
+                       proj4string = CRS("+init=epsg:3158"))   #coordinate reference
+deer_ltraj
+
+```
+
+
+# Recap 1: Tracking Data in adehabitatLT
+
+![](figs/MovementEcologyInR_Logo.png)
+
+## Installing Packages
+
+- Use 'install.packages('PackageName') to install a package
+- Need to call library(PackageName) in every R session
+
+```{r}
+#| echo: true
+
+#install.packages('sf')
+library(sf)
+library(adehabitatLT)
+library(sp)
+```
+
+
+## Reading in Data
+
+Download file from <https://github.com/jedalong/Movement-Ecology-in-R/DeerGPS_MoveEcolWorkshop.csv>
+
+```{r}
+#| echo: true
+
+x <- read.csv('Data/DeerGPS_MoveEcolWorkshop.csv') #explore the data
+x$date <- paste(x$MONTH,"/",x$DAY,"/",x$YEAR," ",
+                x$HOUR,":",x$MINUTE,":",x$SECOND,sep="")
+x$date1 <- strptime(x$date, "%m/%d/%Y %H:%M:%S")
+x$POSIX <- as.POSIXct(x$date1)
+head(x)
+```
+
+## Transform Spatial Coordinates
+
+```{r}
+#| echo: true
+
+deersf <- st_as_sf(x,coords=c('LONGITUDE','LATITUDE'),crs=4326)
+deersf_utm <- st_transform(deersf,crs=3158)
+deersf_utm$X <- st_coordinates(deersf_utm)[,1]  
+deersf_utm$Y <- st_coordinates(deersf_utm)[,2]
+deer_utm <- st_drop_geometry(deersf_utm)
+head(deer_utm)
+```
+
+## Convert to 'ltraj' Trajectory
+
+- Spatial Coordinates
+- Date/Time
+- ID
+- "INFOLOCS" = other data
+
+```{r}
+#| echo: true
+
+deer_utm$POSIX <- as.POSIXct(deer_utm$date1)
+deer_ltraj <- as.ltraj(xy=deer_utm[,c('X','Y')], date = deer_utm$POSIX,
+                       id = deer_utm$ID, infolocs=deer_utm[,c('PDOP','ACTIVITY')],
+                       proj4string = CRS("+init=epsg:3158"))
+deer_ltraj
+```
+
+# Visualizing Wildlife Tracking Data
+
+## adehabitatLT package
+
+- default plots are IMO terrible
+    - automatically plot all individuals in seperate tile
+
+```{r}
+#| echo: true
+plot(deer_ltraj)
+```
+
+
+## Maps in sf
+
+- Not bad, but could be better
+
+```{r}
+#| echo: true
+
+plot(deersf_utm['ID'])
+
+```
+
+## Mapview Package
+
+- Closest thing to interactive GIS window
+
+```{r}
+#| echo: true
+
+library(mapview)
+mapview(deersf_utm['ID'])
+```
+
+## Quick Plotting Hack
+
+- Make lines from points to capture trajectory
+
+```{r}
+#| echo: true
+
+deersf_utm_lines <- deersf_utm %>% 
+  dplyr::group_by(ID) %>% 
+  dplyr::summarise(do_union=FALSE) %>%
+  st_cast("LINESTRING")
+plot(deersf_utm_lines['ID'])
+```
+
+## Combine Points and Lines in Mapview
+
+- suffers from visual overlap (spaghetti map)
+
+```{r}
+#| echo: true
+mapview(deersf_utm_lines['ID']) + mapview(deersf_utm['ID'])
+```
+
+## Combine Points and Lines in Mapview
+
+```{r}
+#| echo: true
+deer46 <- subset(deersf_utm,ID=='d16246y2011')
+deer46_lines <- subset(deersf_utm_lines,ID=='d16246y2011')
+
+mapview(deer46_lines['ID']) + mapview(deer46['ID'])
+```
+
+## Animating Tracking Data
+
+- Static maps are useful for papers and reports
+- Dynamic visualizations are more fun!
+- Animations are great in slides and presentations
+- Great for posting on the web/social media
+- Exploring patterns in your data
+
+## moveVis R Package
+
+- *moveVis* is built upon the *move* data objects
+    - easy to convert *ltraj* to *move* object
+- requires additional downloads onto your laptop
+
+```{r}
+#| echo: true
+#| error: true
+
+library(move)
+library(moveVis)
+
+#Convert ltraj to move (focus on deer 46)
+deer_move <- move(deer_ltraj[4])
+```
+
+## MoveVis needs Lat/Long Coodinates?
+
+```{r}
+#| echo: true
+x46 <- subset(x,ID=='d16246y2011')
+deer_move <- move(x46$LONGITUDE,x46$LATITUDE,time=x46$POSIX,data=x46,proj=CRS("+init=epsg:4326"))
+
+plot(deer_move)
+```
+
+## Create Animation Frame-by-Frame
+
+```{r}
+#| echo: true
+
+#need to regularize the track for animation - here we have ~30 minute data
+m <- align_move(deer_move, res = 30, unit = "mins")
+# create spatial frames with a OpenStreetMap map
+frames <- frames_spatial(m, map_service = "osm", map_type = "topographic") %>% 
+  add_northarrow() %>% 
+  add_scalebar() %>% 
+  add_timestamps(type = "label") %>% 
+  add_progress()
+```
+
+## Look at One Frame
+
+```{r}
+#| echo: true
+#| 
+frames[[100]] # preview one of the frames, e.g. the 100th frame
+
+# animate frames takes 30 minutes for a 1 minute video (1487 frames)
+#animate_frames(frames, out_file = "moveVis.gif")
+
+```
+
+## Create moveVis GIF
+
+![](moveVis.gif)
+# Recap 2: Maps and moveVis Animation
+
+![](figs/MovementEcologyInR_Logo.png) 
+
+## Maps in R using sf Hack
+
+```{r}
+#| echo: true
+
+deersf_utm_lines <- deersf_utm %>% 
+  dplyr::group_by(ID) %>% 
+  dplyr::summarise(do_union=FALSE) %>%
+  st_cast("LINESTRING")
+
+plot(deersf_utm_lines['ID'])
+```
+
+## Animations with moveVis
+
+```{r}
+#| echo: true
+#| eval: false
+
+m <- align_move(deer_move, res = 30, unit = "mins")
+
+frames <- frames_spatial(m, map_service = "osm", map_type = "topographic") %>% 
+  add_northarrow() %>% 
+  add_scalebar() %>% 
+  add_timestamps(type = "label") %>% 
+  add_progress()
+
+animate_frames(frames, out_file = "moveVis.gif")
+```
+
+# Analysis of Wildlife Tracking Data
+
+## Movement Data Properties
+
+![Key Measures from fixes: distance, bearing, turning angle, time interval, speed (distance/time)](figs/movement_data_properties_v2.png)
+
+## Automatic in adehabitatLT
+
+- distance between fixes: dist 
+- time between fixes: dt
+- bearing/direction: abs.angle
+- turning angle: rel.angle
+
+```{r}
+head(ld(deer_ltraj))
+```
+
+## Movement Metrics in adehabitatLT
+
+- step-characteristics associated with first fix (dist, dt, abs.angle)
+    - NA values in last row (n fixes -> n-1 steps)
+- turning angle associated with middle of three fixes (rel.angle)
+    - NA values in first and last row (n-1 steps -> n-2 turns)
+
+## Accessing Movement Metrics
+
+- Convert back to data.frame
+
+```{r}
+#| echo: true
+library(ggplot2)
+deerdf <- ld(deer_ltraj)
+ggplot(deerdf, aes(x = dist, fill = id)) +                    
+  geom_histogram(position="identity",alpha=0.2,bins=50) +
+  scale_x_continuous(trans='log')
+
+```
+
+## Movement Step Velocities
+
+```{r}
+#| echo: true
+
+deerdf$vi <- deerdf$dist / deerdf$dt #step velocity in m/s
+deer_ltraj <- dl(deerdf) #convert back to ltraj
+ggplot(deerdf, aes(x=id, y = vi)) +                    
+  geom_boxplot() +
+  scale_y_continuous(trans='log')
+```
+
+## Net-Displacement
+
+:::: {.columns}
+
+::: {.column width="50%"}
+
+![](figs/Net_Displacement.png)
+:::
+
+::: {.column width="50%"}
+
+- Net (not cumulative) distance from origin point
+    - often 'First Fix'
+- Sometimes use $\sqrt{nD}$ (squared-net displacement)
+    - statistical properties
+- Maximum displacement (furthest point from origin)
+
+:::
+
+::::
+
+## Net Displacement
+
+```{r}
+#| echo: true
+
+ggplot(deerdf, aes(x = date, y=R2n/1000, colour = id)) +                    
+  geom_line()
+```
+
+## First Passage Time
+
+
+:::: {.columns}
+
+::: {.column width="50%"}
+
+- Similar conceptually to nD
+    - Focuses on time
+- Time to reach a given radial distance
+    - from origin fix
+- Often used to study dispersion
+
+:::
+
+::: {.column width="50%"}
+
+![](figs/FPT.png)
+
+:::
+
+::::
+
+## First Passage Time
+
+- FPT low = active movement
+- FPT high = stationary periods
+- This deer is relatively active
+
+```{r}
+r <- seq(from=100,to=2000,by=25)
+deer_fpt <- fpt(deer_ltraj[6],radii=r,units='hours')
+plot(deer_fpt,scale=250)
+```
+
+## First Passage Time
+
+- Different individual, different pattern
+- What behaviour are we seeing here?
+- How might we think about 'scale'?
+
+```{r}
+r <- seq(from=100,to=2000,by=25)
+deer_fpt <- fpt(deer_ltraj[1],radii=r,units='hours')
+plot(deer_fpt,scale=250)
+```
+
+## Analysis Scale
+
+- The scale at which we analyze tracking data matters
+    - space
+    - time
+- Movement metrics and related analysis depend on scale of data and analysis
+
+![](figs/Local_to_Global_Analysis_V2.png)
+
+## Classifying Behaviour
+
+- We often want to determine behavioural classes
+    - similar to 'parturition'
+- What kinds of things might go into this
+    - movement metrics
+- Can we do this objectively & automatically?
+
+![](figs/moving_eating.jpg)
+
+## Different Approaches
+
+
+## MoveHMM
+
+```{r}
+#| echo: true
+
+d <- prepData(x46,type='LL',coordNames=c('LONGITUDE','LATITUDE'))
+#d <- prepData(st_drop_geometry(deer46),type='UTM',coordNames=c('X','Y"))
+
+```
+
+## MoveHMM
+
+```{r}
+## Studying Interactions
+
+# Excercise 4: Calculating Home Ranges
+
+# Summary
+
